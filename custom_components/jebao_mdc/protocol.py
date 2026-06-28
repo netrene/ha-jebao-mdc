@@ -6,7 +6,7 @@ import socket
 import time
 from dataclasses import dataclass
 
-from .const import DEFAULT_PASSCODE, DEFAULT_PORT
+from .const import DEFAULT_DISCOVERY_PORT, DEFAULT_PASSCODE, DEFAULT_PORT
 
 
 class JebaoMdcError(RuntimeError):
@@ -31,6 +31,43 @@ class PumpStatus:
         if self.mode is None:
             return "unknown"
         return f"0x{self.mode:02x}"
+
+
+@dataclass(frozen=True)
+class DeviceInfo:
+    """Decoded discovery information."""
+
+    host: str
+    device_id: str
+    mac: str
+    api_server: str | None
+    version: str | None
+    raw: bytes
+
+
+def discover_devices(timeout: float = 4.0) -> list[DeviceInfo]:
+    """Discover JEBAO/Gizwits devices via UDP broadcast."""
+    devices: dict[str, DeviceInfo] = {}
+    request = b"\x00\x00\x00\x03\x03\x00\x00\x03"
+    deadline = time.time() + timeout
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(0.5)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(("", 0))
+        sock.sendto(request, ("255.255.255.255", DEFAULT_DISCOVERY_PORT))
+
+        while time.time() < deadline:
+            try:
+                data, address = sock.recvfrom(512)
+            except socket.timeout:
+                continue
+
+            info = _parse_device_info(data, address[0])
+            if info is not None:
+                devices[info.device_id] = info
+
+    return list(devices.values())
 
 
 class JebaoMdcClient:
@@ -76,6 +113,13 @@ class JebaoMdcClient:
                     return status
             return None
 
+    def discover_device_info(self) -> DeviceInfo | None:
+        """Discover device information for this client host."""
+        for info in discover_devices(timeout=2.5):
+            if info.host == self.host:
+                return info
+        return None
+
     def _connect_logged_in(self) -> socket.socket:
         sock = socket.create_connection((self.host, self.port), self.timeout)
         sock.settimeout(self.timeout)
@@ -87,7 +131,7 @@ class JebaoMdcClient:
         return sock
 
     def _login(self, sock: socket.socket) -> None:
-        passcode = self.passcode.encode("ascii")
+        passcode = self._get_passcode(sock).encode("ascii")
         if len(passcode) != 10:
             raise ValueError("passcode must be exactly 10 ASCII characters")
 
@@ -96,6 +140,21 @@ class JebaoMdcClient:
         expected = b"\x00\x00\x00\x03\x04\x00\x00\x09\x00"
         if response != expected:
             raise JebaoMdcError(f"login failed: {response.hex(' ')}")
+
+    def _get_passcode(self, sock: socket.socket) -> str:
+        """Return the configured passcode or request it from the pump."""
+        if self.passcode:
+            return self.passcode
+
+        sock.sendall(b"\x00\x00\x00\x03\x03\x00\x00\x06")
+        response = self._recv_exact(sock, 20)
+        prefix = b"\x00\x00\x00\x03\x0f\x00\x00\x07\x00\x0a"
+        if not response.startswith(prefix):
+            raise JebaoMdcError(f"passcode request failed: {response.hex(' ')}")
+
+        passcode = response[len(prefix) :].decode("ascii")
+        self.passcode = passcode
+        return passcode
 
     def _next_request_id(self) -> int:
         self._request_id += 1
@@ -182,3 +241,35 @@ class JebaoMdcClient:
 
         return PumpStatus(None, None, frame)
 
+
+def _parse_device_info(frame: bytes, host: str) -> DeviceInfo | None:
+    """Parse a Gizwits/GAgent UDP discovery response."""
+    if not frame.startswith(b"\x00\x00\x00\x03") or len(frame) < 54:
+        return None
+    if frame[7] != 0x04:
+        return None
+    if frame[8:10] != b"\x00\x16":
+        return None
+
+    device_id = frame[10:32].rstrip(b"\x00").decode("ascii", errors="ignore")
+    if not device_id:
+        return None
+
+    if frame[32:34] != b"\x00\x06":
+        return None
+
+    mac = frame[34:40].hex(":")
+    api_server = None
+    version = None
+
+    marker = b"\x00\x00\x00\x00\x00\x00\x00\x02"
+    marker_index = frame.find(marker, 40)
+    if marker_index >= 0:
+        text_start = marker_index + len(marker)
+        text = frame[text_start:].split(b"\x00")
+        if text and text[0]:
+            api_server = text[0].decode("ascii", errors="ignore")
+        if len(text) > 1 and text[1]:
+            version = text[1].decode("ascii", errors="ignore")
+
+    return DeviceInfo(host, device_id, mac, api_server, version, frame)

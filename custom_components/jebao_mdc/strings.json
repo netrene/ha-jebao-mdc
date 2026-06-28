@@ -3,11 +3,12 @@
     "step": {
       "user": {
         "title": "Set up JEBAO MDC",
-        "description": "Enter the pump address and LAN protocol passcode.",
+        "description": "Enter the pump address. Leave the passcode empty to request it from the pump automatically.",
         "data": {
+          "selected_device": "Discovered pump",
           "host": "Host",
           "port": "Port",
-          "passcode": "Passcode"
+          "passcode": "Passcode (optional)"
         }
       }
     },
@@ -20,4 +21,3 @@
     }
   }
 }
-
