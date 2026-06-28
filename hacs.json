@@ -1,0 +1,7 @@
+{
+  "name": "JEBAO MDC",
+  "render_readme": true,
+  "domains": ["fan"],
+  "homeassistant": "2024.6.0"
+}
+
