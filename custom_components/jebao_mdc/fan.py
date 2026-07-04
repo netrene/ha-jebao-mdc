@@ -5,13 +5,11 @@ from __future__ import annotations
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_MAC, DOMAIN, MANUFACTURER, MODEL
+from .const import DOMAIN
 from .coordinator import JebaoMdcCoordinator
+from .entity import JebaoMdcEntity
 
 
 async def async_setup_entry(
@@ -24,7 +22,7 @@ async def async_setup_entry(
     async_add_entities([JebaoMdcFan(coordinator, entry)])
 
 
-class JebaoMdcFan(CoordinatorEntity[JebaoMdcCoordinator], FanEntity):
+class JebaoMdcFan(JebaoMdcEntity, FanEntity):
     """Representation of a JEBAO MDC pump as a fan."""
 
     _attr_has_entity_name = True
@@ -34,19 +32,7 @@ class JebaoMdcFan(CoordinatorEntity[JebaoMdcCoordinator], FanEntity):
 
     def __init__(self, coordinator: JebaoMdcCoordinator, entry: ConfigEntry) -> None:
         """Initialize the fan entity."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._attr_unique_id = f"{entry.unique_id}_fan"
-        device_info: DeviceInfo = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.entry_id)},
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "name": entry.title,
-        }
-        if mac := entry.data.get(CONF_MAC):
-            device_info["connections"] = {(dr.CONNECTION_NETWORK_MAC, mac)}
-
-        self._attr_device_info = device_info
+        super().__init__(coordinator, entry, "fan")
 
     @property
     def percentage(self) -> int | None:

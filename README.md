@@ -9,10 +9,31 @@ Tested against one MDC-5000 on the local LAN:
 - Status read over TCP port `12416`
 - Speed set as a Home Assistant `fan` percentage
 - Device ID and MAC discovery over UDP port `12414`
+- Built-in feeding helper entities
 
-Feeding mode is not exposed yet. Captures show a feeding-like mode byte, but the
-observed device did not visibly enter a feeding pause when the vendor app sent
-that command.
+The vendor feeding command is not used. Captures show a feeding-like mode byte,
+but the observed device did not visibly enter a feeding pause when the vendor app
+sent that command. The integration instead implements feeding by temporarily
+setting the pump to a configurable feeding speed and then restoring the normal
+speed.
+
+## Entities
+
+The integration creates:
+
+- `fan`: direct speed control
+- `number`: normal setpoint, default `57%`
+- `number`: feeding setpoint, default `30%`
+- `number`: feeding duration, default `10 min`
+- `button`: start feeding
+- `button`: stop feeding
+- `binary_sensor`: feeding active
+
+Pressing `Start feeding` sets the pump to the feeding setpoint for the configured
+duration. Afterwards the pump is restored to the normal setpoint. Pressing
+`Start feeding` again restarts the timer. Pressing `Stop feeding` immediately
+restores the normal setpoint. Setpoints and duration are stored in the
+integration options and survive Home Assistant restarts.
 
 ## Install for development
 
