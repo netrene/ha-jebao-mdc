@@ -2,7 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/netrene/ha-jebao-mdc?style=for-the-badge)](https://github.com/netrene/ha-jebao-mdc/releases)
 [![hacs](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://www.hacs.xyz/)
-[![license](https://img.shields.io/github/license/netrene/ha-jebao-mdc?style=for-the-badge)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 Experimental Home Assistant custom integration for JEBAO MDC pumps.
 
