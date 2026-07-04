@@ -1,6 +1,16 @@
-# JEBAO MDC Home Assistant custom integration
+# JEBAO MDC
+
+[![release](https://img.shields.io/github/v/release/netrene/ha-jebao-mdc?style=for-the-badge)](https://github.com/netrene/ha-jebao-mdc/releases)
+[![hacs](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://www.hacs.xyz/)
+[![license](https://img.shields.io/github/license/netrene/ha-jebao-mdc?style=for-the-badge)](LICENSE)
 
 Experimental Home Assistant custom integration for JEBAO MDC pumps.
+
+Local LAN control for JEBAO MDC pumps with automatic discovery, direct speed
+control, and built-in feeding controls.
+
+> [!WARNING]
+> This integration has currently been tested with one JEBAO MDC-5000 only.
 
 ## Status
 
@@ -35,7 +45,35 @@ duration. Afterwards the pump is restored to the normal setpoint. Pressing
 restores the normal setpoint. Setpoints and duration are stored in the
 integration options and survive Home Assistant restarts.
 
-## Install for development
+## Installation
+
+### HACS custom repository, recommended
+
+This integration can be installed with HACS as a custom repository.
+
+1. Install HACS if you don't have it already.
+2. Open HACS in Home Assistant.
+3. Open the three-dot menu and choose `Custom repositories`.
+4. Add this repository URL:
+
+   ```text
+   https://github.com/netrene/ha-jebao-mdc
+   ```
+
+5. Choose category `Integration`.
+6. Install `JEBAO MDC`.
+7. Restart Home Assistant.
+8. Add the integration from:
+
+   ```text
+   Settings -> Devices & services -> Add integration -> JEBAO MDC
+   ```
+
+The setup flow scans the local network via UDP discovery and offers discovered
+pumps in a dropdown. If discovery does not find the pump, enter its IP address
+manually.
+
+### Manual install
 
 Copy `custom_components/jebao_mdc` into your Home Assistant configuration
 directory so the integration is located at:
@@ -50,9 +88,7 @@ Restart Home Assistant, then add the integration from:
 Settings -> Devices & services -> Add integration -> JEBAO MDC
 ```
 
-The setup flow scans the local network via UDP discovery and offers discovered
-pumps in a dropdown. If discovery does not find the pump, enter its IP address
-manually.
+To update a manual installation, replace the folder and restart Home Assistant.
 
 Known values from the first tested pump:
 
@@ -62,11 +98,6 @@ Known values from the first tested pump:
 
 The first tested pump returned `BMLEEBSYMF` from the protocol passcode request.
 Treat this value as device-specific until more pumps have been tested.
-
-## HACS
-
-This repository is structured for HACS as a custom integration repository.
-Add it to HACS as a custom repository with category `Integration`.
 
 ## Protocol notes
 
