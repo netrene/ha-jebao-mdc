@@ -1,6 +1,6 @@
 {
   "name": "JEBAO MDC",
   "render_readme": true,
-  "domains": ["fan", "number", "button", "binary_sensor"],
+  "domains": ["fan", "number", "button", "binary_sensor", "sensor"],
   "homeassistant": "2024.6.0"
 }

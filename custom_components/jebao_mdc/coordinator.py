@@ -138,7 +138,12 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
     async def _feeding_timer(self, feeding_until: float) -> None:
         """Wait for the feeding duration and restore the normal setpoint."""
         try:
-            await asyncio.sleep(max(0, feeding_until - self._now()))
+            while True:
+                remaining = feeding_until - self._now()
+                if remaining <= 0:
+                    break
+                self.async_update_listeners()
+                await asyncio.sleep(min(1, remaining))
             await self.async_set_speed(self.normal_setpoint)
             self.feeding_active = False
             self.feeding_until = None
@@ -164,6 +169,13 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
         """Set the feeding duration in minutes."""
         self.feeding_duration = value
         self.async_update_listeners()
+
+    @property
+    def feeding_remaining_seconds(self) -> int:
+        """Return remaining feeding time in seconds."""
+        if not self.feeding_active or self.feeding_until is None:
+            return 0
+        return max(0, int(round(self.feeding_until - self._now())))
 
     def _store_option(self, key: str, value: int | float) -> None:
         """Persist an integration option."""
