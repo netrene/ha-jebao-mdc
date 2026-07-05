@@ -170,6 +170,21 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
         self.feeding_duration = value
         self.async_update_listeners()
 
+    def store_normal_setpoint(self, value: int) -> None:
+        """Set and persist the normal speed setpoint."""
+        self.set_normal_setpoint(value)
+        self._store_option(CONF_NORMAL_SETPOINT, value)
+
+    def store_feeding_setpoint(self, value: int) -> None:
+        """Set and persist the feeding speed setpoint."""
+        self.set_feeding_setpoint(value)
+        self._store_option(CONF_FEEDING_SETPOINT, value)
+
+    def store_feeding_duration(self, value: int) -> None:
+        """Set and persist the feeding duration."""
+        self.set_feeding_duration(value)
+        self._store_option(CONF_FEEDING_DURATION, value)
+
     @property
     def feeding_remaining_seconds(self) -> int:
         """Return remaining feeding time in seconds."""

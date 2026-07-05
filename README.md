@@ -47,6 +47,27 @@ duration. Afterwards the pump is restored to the normal setpoint. Pressing
 restores the normal setpoint. Setpoints and duration are stored in the
 integration options and survive Home Assistant restarts.
 
+## Calibration panel
+
+The integration also registers an admin-only sidebar panel:
+
+```text
+JEBAO Setup
+```
+
+The panel guides you through calibration of the two important setpoints:
+
+- **Normal speed**: the everyday pump speed.
+- **Feeding speed**: the reduced speed used while feeding.
+
+The wizard lets you select a pump, test a candidate speed, adjust it in small
+steps, save it as the normal or feeding setpoint, and restore the configured
+normal speed when calibration is finished.
+
+The panel uses the integration backend to set the pump speed and persist the
+selected setpoints in the config entry options. No YAML or dashboard setup is
+required.
+
 ## Installation
 
 ### HACS custom repository, recommended

@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_PASSCODE, DEFAULT_PASSCODE, DOMAIN
 from .coordinator import JebaoMdcCoordinator
+from .panel import async_setup_panel, async_unload_panel_if_unused
 from .protocol import JebaoMdcClient
 
 PLATFORMS: list[Platform] = [
@@ -31,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_restore_feeding_timer()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await async_setup_panel(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -41,4 +43,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         coordinator: JebaoMdcCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         coordinator.cancel_feeding_timer()
+        async_unload_panel_if_unused(hass)
     return unload_ok
