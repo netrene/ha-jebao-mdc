@@ -11,6 +11,8 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     this._target = "normal";
     this._candidate = 0;
     this._step = 0;
+    this._sliderTimer = undefined;
+    this._settingSpeed = false;
   }
 
   set hass(hass) {
@@ -25,6 +27,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
   connectedCallback() {
     this.shadowRoot.addEventListener("click", (event) => this._handleClick(event));
     this.shadowRoot.addEventListener("change", (event) => this._handleChange(event));
+    this.shadowRoot.addEventListener("input", (event) => this._handleInput(event));
     this._render();
   }
 
@@ -85,24 +88,18 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       return;
     }
 
-    if (action === "target") {
-      this._target = button.dataset.target;
-      this._step = this._target === "normal" ? 1 : 2;
-      this._selectPump(this._entryId);
-      this._render();
+    if (action === "step") {
+      await this._goToStep(Number(button.dataset.step), { applySpeed: true });
       return;
     }
 
-    if (action === "step") {
-      this._step = Number(button.dataset.step);
-      if (this._step === 1) {
-        this._target = "normal";
-      }
-      if (this._step === 2) {
-        this._target = "feeding";
-      }
-      this._selectPump(this._entryId);
-      this._render();
+    if (action === "next") {
+      await this._goToStep(Math.min(3, this._step + 1), { applySpeed: true });
+      return;
+    }
+
+    if (action === "back") {
+      await this._goToStep(Math.max(0, this._step - 1), { applySpeed: true });
       return;
     }
 
@@ -128,27 +125,60 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     }
   }
 
-  _handleChange(event) {
+  async _handleChange(event) {
     const select = event.target.closest("select");
-    if (!select) {
+    if (select && select.name === "pump") {
+      this._selectPump(select.value);
+      await this._goToStep(this._pumps.length > 0 ? 1 : 0, { applySpeed: true });
       return;
     }
 
-    if (select.name === "pump") {
-      this._selectPump(select.value);
-      this._step = this._pumps.length > 0 ? 1 : 0;
-      this._render();
+    const slider = event.target.closest('input[name="speed"]');
+    if (slider) {
+      this._cancelSliderTimer();
+      await this._setCandidate(slider.value);
+    }
+  }
+
+  _handleInput(event) {
+    const slider = event.target.closest('input[name="speed"]');
+    if (!slider) {
+      return;
+    }
+
+    this._candidate = this._clampSpeed(slider.value);
+    this._updateSliderOutput();
+    this._cancelSliderTimer();
+    this._sliderTimer = window.setTimeout(() => {
+      this._setCandidate(this._candidate);
+    }, 350);
+  }
+
+  async _goToStep(step, options = {}) {
+    this._step = step;
+    if (step === 1) {
+      this._target = "normal";
+    }
+    if (step === 2) {
+      this._target = "feeding";
+    }
+    this._selectPump(this._entryId);
+    this._render();
+
+    if (options.applySpeed && (step === 1 || step === 2)) {
+      await this._setCandidate(this._candidate);
     }
   }
 
   async _setCandidate(value) {
     const pump = this._selectedPump();
-    if (!pump) {
+    if (!pump || this._settingSpeed) {
       return;
     }
 
-    this._candidate = Math.max(0, Math.min(100, Math.round(value)));
+    this._candidate = this._clampSpeed(value);
     this._error = "";
+    this._settingSpeed = true;
     this._render();
 
     try {
@@ -160,6 +190,8 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       this._mergePump(result);
     } catch (error) {
       this._error = error.message || "Could not set pump speed.";
+    } finally {
+      this._settingSpeed = false;
     }
     this._render();
   }
@@ -170,6 +202,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       return;
     }
 
+    this._cancelSliderTimer();
     this._error = "";
     this._render();
 
@@ -182,13 +215,16 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         restore_normal: true,
       });
       this._mergePump(result);
-      this._step = this._target === "normal" ? 2 : 3;
-      this._target = this._step === 2 ? "feeding" : this._target;
-      this._selectPump(pump.entry_id);
+
+      if (this._target === "normal") {
+        await this._goToStep(2, { applySpeed: true });
+      } else {
+        await this._goToStep(3, { applySpeed: false });
+      }
     } catch (error) {
       this._error = error.message || "Could not save setpoint.";
+      this._render();
     }
-    this._render();
   }
 
   async _restoreNormal() {
@@ -197,6 +233,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       return;
     }
 
+    this._cancelSliderTimer();
     this._error = "";
     this._render();
 
@@ -218,11 +255,38 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     );
   }
 
+  _cancelSliderTimer() {
+    if (this._sliderTimer !== undefined) {
+      window.clearTimeout(this._sliderTimer);
+      this._sliderTimer = undefined;
+    }
+  }
+
+  _clampSpeed(value) {
+    return Math.max(0, Math.min(100, Math.round(Number(value))));
+  }
+
+  _updateSliderOutput() {
+    const value = String(this._candidate);
+    const number = this.shadowRoot.querySelector(".speed-number");
+    const slider = this.shadowRoot.querySelector('input[name="speed"]');
+    const apply = this.shadowRoot.querySelector('[data-speed-action="apply"]');
+
+    if (number) {
+      number.textContent = value;
+    }
+    if (slider) {
+      slider.value = value;
+      slider.style.setProperty("--value", `${value}%`);
+    }
+    if (apply) {
+      apply.textContent = `Test ${value}%`;
+    }
+  }
+
   _render() {
     const pump = this._selectedPump();
     const title = pump ? this._escape(pump.title) : "No pump selected";
-    const targetLabel =
-      this._target === "normal" ? "Normal speed" : "Feeding speed";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -235,7 +299,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         }
 
         .page {
-          max-width: 1180px;
+          max-width: 1120px;
           margin: 0 auto;
           padding: 24px;
         }
@@ -245,30 +309,85 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           justify-content: space-between;
           gap: 16px;
           align-items: flex-start;
-          margin-bottom: 20px;
+          margin-bottom: 22px;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+          margin: 0;
         }
 
         h1 {
-          margin: 0;
           font-size: 28px;
           font-weight: 500;
           letter-spacing: 0;
         }
 
-        .subtitle {
-          margin-top: 6px;
-          color: var(--secondary-text-color);
-          line-height: 1.45;
+        h2 {
+          font-size: 24px;
+          font-weight: 500;
+          letter-spacing: 0;
+          margin-bottom: 8px;
         }
 
-        .layout {
+        h3 {
+          font-size: 16px;
+          font-weight: 600;
+          letter-spacing: 0;
+          margin-bottom: 10px;
+        }
+
+        .subtitle,
+        .muted,
+        .instructions {
+          color: var(--secondary-text-color);
+          line-height: 1.5;
+        }
+
+        .subtitle {
+          margin-top: 6px;
+        }
+
+        .progress {
           display: grid;
-          grid-template-columns: 280px minmax(0, 1fr);
-          gap: 16px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+
+        .progress-step {
+          min-height: 64px;
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          background: var(--ha-card-background, var(--card-background-color));
+          color: var(--primary-text-color);
+          padding: 10px;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .progress-step[aria-current="true"] {
+          border-color: var(--primary-color);
+          background: rgba(var(--rgb-primary-color), 0.14);
+        }
+
+        .progress-number {
+          display: block;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .progress-title {
+          display: block;
+          margin-top: 4px;
+          font-weight: 600;
         }
 
         .panel,
-        .steps,
         .summary {
           background: var(--ha-card-background, var(--card-background-color));
           border: 1px solid var(--divider-color);
@@ -276,69 +395,27 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           box-shadow: var(--ha-card-box-shadow, none);
         }
 
-        .steps {
-          padding: 8px;
-        }
-
-        .step {
-          width: 100%;
-          display: grid;
-          grid-template-columns: 32px 1fr;
-          align-items: center;
-          gap: 10px;
-          border: 0;
-          border-radius: 6px;
-          background: transparent;
-          color: var(--primary-text-color);
-          text-align: left;
-          padding: 12px;
-          cursor: pointer;
-        }
-
-        .step[aria-current="true"] {
-          background: rgba(var(--rgb-primary-color), 0.14);
-        }
-
-        .step-index {
-          display: inline-grid;
-          place-items: center;
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          background: var(--divider-color);
-          font-weight: 600;
-        }
-
-        .step[aria-current="true"] .step-index {
-          background: var(--primary-color);
-          color: var(--text-primary-color);
-        }
-
-        .step-title {
-          font-weight: 600;
-        }
-
-        .step-note {
-          color: var(--secondary-text-color);
-          font-size: 13px;
-          margin-top: 2px;
-        }
-
         .panel {
-          padding: 20px;
+          padding: 22px;
         }
 
-        .toolbar {
-          display: flex;
+        .section-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 22px;
+          align-items: start;
+        }
+
+        .pump-picker {
+          display: grid;
           gap: 12px;
-          flex-wrap: wrap;
-          align-items: center;
-          margin-bottom: 18px;
+          max-width: 420px;
+          margin-top: 18px;
         }
 
         select,
         input {
-          min-height: 40px;
+          min-height: 42px;
           border: 1px solid var(--divider-color);
           border-radius: 6px;
           background: var(--card-background-color);
@@ -368,32 +445,30 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           color: var(--error-color);
         }
 
-        .target-switch {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 8px;
-          margin-bottom: 18px;
+        button:disabled {
+          cursor: progress;
+          opacity: 0.65;
         }
 
-        .target-switch button[aria-pressed="true"] {
-          background: rgba(var(--rgb-primary-color), 0.14);
-          border-color: var(--primary-color);
-        }
-
-        .calibration {
+        .calibration-grid {
           display: grid;
-          grid-template-columns: minmax(220px, 0.75fr) minmax(280px, 1fr);
-          gap: 20px;
-          align-items: stretch;
+          grid-template-columns: 260px minmax(0, 1fr);
+          gap: 24px;
+          align-items: center;
+          margin-top: 22px;
         }
 
         .speed-display {
           display: grid;
           place-items: center;
-          min-height: 240px;
+          min-height: 220px;
           border: 1px solid var(--divider-color);
           border-radius: 8px;
-          background: rgba(var(--rgb-primary-color), 0.06);
+          background: rgba(var(--rgb-primary-color), 0.08);
+        }
+
+        .speed-number-wrap {
+          text-align: center;
         }
 
         .speed-number {
@@ -403,44 +478,101 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           letter-spacing: 0;
         }
 
+        .speed-unit {
+          font-size: 28px;
+          font-weight: 500;
+        }
+
         .speed-label {
           margin-top: 8px;
           color: var(--secondary-text-color);
           text-align: center;
         }
 
-        .controls {
+        .slider-block {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
+          gap: 14px;
         }
 
-        .controls button {
-          min-height: 56px;
-          font-size: 18px;
+        .range-wrap {
+          position: relative;
+          padding-top: 34px;
+          padding-bottom: 22px;
         }
 
-        .instructions {
-          margin: 0 0 16px;
-          line-height: 1.55;
+        .normal-marker {
+          display: none;
+          position: absolute;
+          top: 0;
+          left: var(--normal);
+          transform: translateX(-50%);
+          color: var(--primary-color);
+          font-size: 12px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .normal-marker::after {
+          content: "";
+          display: block;
+          width: 2px;
+          height: 48px;
+          margin: 4px auto 0;
+          background: var(--primary-color);
+          border-radius: 999px;
+        }
+
+        .range-wrap.has-marker .normal-marker {
+          display: block;
+        }
+
+        input[type="range"] {
+          width: 100%;
+          min-height: 34px;
+          padding: 0;
+          border: 0;
+          accent-color: var(--primary-color);
+          background: linear-gradient(
+            to right,
+            var(--primary-color) 0,
+            var(--primary-color) var(--value),
+            var(--divider-color) var(--value),
+            var(--divider-color) 100%
+          );
+        }
+
+        .range-labels {
+          display: flex;
+          justify-content: space-between;
           color: var(--secondary-text-color);
+          font-size: 12px;
+          margin-top: 4px;
+        }
+
+        .quick-controls {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .quick-controls button {
+          min-height: 44px;
         }
 
         .actions {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
-          margin-top: 16px;
+          margin-top: 18px;
         }
 
         .summary {
           padding: 16px;
-          margin-top: 16px;
         }
 
         .summary-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: 1fr;
           gap: 10px;
         }
 
@@ -461,6 +593,13 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           font-weight: 600;
         }
 
+        .review-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 18px;
+        }
+
         .error {
           color: var(--error-color);
           margin-bottom: 12px;
@@ -472,18 +611,18 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           }
 
           .header,
-          .layout,
-          .calibration,
-          .summary-grid {
+          .section-grid,
+          .calibration-grid,
+          .review-grid {
             grid-template-columns: 1fr;
           }
 
-          .layout {
-            display: block;
+          .progress {
+            grid-template-columns: 1fr 1fr;
           }
 
-          .steps {
-            margin-bottom: 16px;
+          .quick-controls {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
         }
       </style>
@@ -492,46 +631,42 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         <div class="header">
           <div>
             <h1>JEBAO MDC calibration</h1>
-            <div class="subtitle">
-              Find the right normal flow and feeding flow by testing pump speeds step by step.
-            </div>
+            <div class="subtitle">Guided setup for normal flow and feeding flow.</div>
           </div>
           <button data-action="refresh">Refresh</button>
         </div>
 
-        <div class="layout">
-          <div class="steps">
-            ${this._stepButton(0, "Choose pump", title)}
-            ${this._stepButton(1, "Normal speed", "Set the everyday flow")}
-            ${this._stepButton(2, "Feeding speed", "Lower flow until feeding works")}
-            ${this._stepButton(3, "Review", "Restore and verify")}
-          </div>
+        ${this._progress(title)}
 
-          <main class="panel">
-            ${this._error ? `<div class="error">${this._escape(this._error)}</div>` : ""}
-            ${this._loading ? `<p class="instructions">Loading pumps...</p>` : ""}
-            ${!this._loading && this._pumps.length === 0 ? this._emptyState() : ""}
-            ${
-              !this._loading && this._pumps.length > 0
-                ? this._calibrationView(pump, targetLabel)
-                : ""
-            }
-          </main>
-        </div>
+        <main class="panel">
+          ${this._error ? `<div class="error">${this._escape(this._error)}</div>` : ""}
+          ${this._loading ? `<p class="instructions">Loading pumps...</p>` : ""}
+          ${!this._loading && this._pumps.length === 0 ? this._emptyState() : ""}
+          ${!this._loading && this._pumps.length > 0 ? this._stepView(pump) : ""}
+        </main>
       </div>
     `;
   }
 
-  _stepButton(index, title, note) {
+  _progress(pumpTitle) {
     return `
-      <button class="step" data-action="step" data-step="${index}" aria-current="${
+      <nav class="progress" aria-label="Calibration steps">
+        ${this._progressButton(0, "Pump", pumpTitle)}
+        ${this._progressButton(1, "Normal", "Everyday speed")}
+        ${this._progressButton(2, "Feeding", "Reduced speed")}
+        ${this._progressButton(3, "Review", "Restore and finish")}
+      </nav>
+    `;
+  }
+
+  _progressButton(index, title, note) {
+    return `
+      <button class="progress-step" data-action="step" data-step="${index}" aria-current="${
       this._step === index
     }">
-        <span class="step-index">${index + 1}</span>
-        <span>
-          <span class="step-title">${this._escape(title)}</span>
-          <span class="step-note">${this._escape(note)}</span>
-        </span>
+        <span class="progress-number">Step ${index + 1}</span>
+        <span class="progress-title">${this._escape(title)}</span>
+        <span class="muted">${this._escape(note)}</span>
       </button>
     `;
   }
@@ -544,69 +679,160 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     `;
   }
 
-  _calibrationView(pump, targetLabel) {
+  _stepView(pump) {
+    if (this._step === 0) {
+      return this._pumpStep(pump);
+    }
+    if (this._step === 1) {
+      return this._speedStep(pump, "normal");
+    }
+    if (this._step === 2) {
+      return this._speedStep(pump, "feeding");
+    }
+    return this._reviewStep(pump);
+  }
+
+  _pumpStep(pump) {
     return `
-      <div class="toolbar">
-        <label>
-          Pump
-          <select name="pump">
-            ${this._pumps
-              .map(
-                (item) => `
-                  <option value="${this._escape(item.entry_id)}" ${
-                  item.entry_id === this._entryId ? "selected" : ""
-                }>
-                    ${this._escape(item.title)}
-                  </option>
-                `
-              )
-              .join("")}
-          </select>
-        </label>
-      </div>
+      <section class="section-grid">
+        <div>
+          <h2>Select pump</h2>
+          <p class="instructions">
+            Choose the pump you want to calibrate. The next steps will test speeds on this pump directly.
+          </p>
 
-      <div class="target-switch">
-        <button data-action="target" data-target="normal" aria-pressed="${
-          this._target === "normal"
-        }">Normal speed</button>
-        <button data-action="target" data-target="feeding" aria-pressed="${
-          this._target === "feeding"
-        }">Feeding speed</button>
-      </div>
+          <label class="pump-picker">
+            Pump
+            <select name="pump">
+              ${this._pumps
+                .map(
+                  (item) => `
+                    <option value="${this._escape(item.entry_id)}" ${
+                    item.entry_id === this._entryId ? "selected" : ""
+                  }>
+                      ${this._escape(item.title)}
+                    </option>
+                  `
+                )
+                .join("")}
+            </select>
+          </label>
 
-      <p class="instructions">
-        ${this._target === "normal"
-          ? "Adjust the pump until the aquarium has the normal flow you want every day. Save it when the flow looks right."
-          : "Reduce the pump until feeding is calm enough. If this is a return pump, feel whether water still exits where it should. Save the lowest useful value."}
-      </p>
-
-      <section class="calibration">
-        <div class="speed-display">
-          <div>
-            <div class="speed-number">${this._candidate}<span style="font-size: 28px;">%</span></div>
-            <div class="speed-label">${this._escape(targetLabel)} test value</div>
+          <div class="actions">
+            <button class="primary" data-action="next">Start calibration</button>
           </div>
         </div>
 
-        <div>
-          <div class="controls">
-            <button data-action="adjust" data-delta="-10">-10</button>
-            <button data-action="adjust" data-delta="-5">-5</button>
-            <button data-action="adjust" data-delta="-1">-1</button>
-            <button data-action="adjust" data-delta="1">+1</button>
-            <button data-action="adjust" data-delta="5">+5</button>
-            <button data-action="adjust" data-delta="10">+10</button>
+        ${this._summary(pump)}
+      </section>
+    `;
+  }
+
+  _speedStep(pump, target) {
+    const isFeeding = target === "feeding";
+    const title = isFeeding ? "Set feeding speed" : "Set normal speed";
+    const label = isFeeding ? "Feeding speed" : "Normal speed";
+    const text = isFeeding
+      ? "Move the slider until feeding is calm enough. The normal speed marker stays visible as a reference while the pump runs at the selected feeding speed."
+      : "Move the slider until the aquarium has the everyday flow you want. The pump runs at the selected value while you adjust it.";
+
+    return `
+      <section>
+        <h2>${title}</h2>
+        <p class="instructions">${text}</p>
+
+        <div class="calibration-grid">
+          <div class="speed-display">
+            <div class="speed-number-wrap">
+              <span class="speed-number">${this._candidate}</span><span class="speed-unit">%</span>
+              <div class="speed-label">${label} test value</div>
+            </div>
           </div>
 
-          <div class="actions">
-            <button data-action="apply">Apply ${this._candidate}%</button>
-            <button class="primary" data-action="save">Save as ${this._escape(targetLabel)}</button>
-            <button class="warning" data-action="restore">Restore normal speed</button>
+          <div class="slider-block">
+            ${this._speedSlider(pump, isFeeding)}
+
+            <div class="quick-controls">
+              <button data-action="adjust" data-delta="-10">-10</button>
+              <button data-action="adjust" data-delta="-5">-5</button>
+              <button data-action="adjust" data-delta="-1">-1</button>
+              <button data-action="adjust" data-delta="1">+1</button>
+              <button data-action="adjust" data-delta="5">+5</button>
+              <button data-action="adjust" data-delta="10">+10</button>
+            </div>
+
+            <div class="actions">
+              <button data-action="apply" data-speed-action="apply" ${
+                this._settingSpeed ? "disabled" : ""
+              }>Test ${this._candidate}%</button>
+              <button class="primary" data-action="save">Save ${label}</button>
+              <button class="warning" data-action="restore">Restore normal speed</button>
+              <button data-action="back">Back</button>
+            </div>
           </div>
         </div>
       </section>
+    `;
+  }
 
-      ${this._summary(pump)}
+  _speedSlider(pump, showNormalMarker) {
+    const markerClass = showNormalMarker ? "range-wrap has-marker" : "range-wrap";
+    return `
+      <div>
+        <div
+          class="${markerClass}"
+          style="--value: ${this._candidate}%; --normal: ${pump.normal_setpoint}%"
+        >
+          <div class="normal-marker">Normal ${pump.normal_setpoint}%</div>
+          <input
+            type="range"
+            name="speed"
+            min="0"
+            max="100"
+            step="1"
+            value="${this._candidate}"
+            style="--value: ${this._candidate}%"
+            aria-label="Pump speed"
+          >
+        </div>
+        <div class="range-labels">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
+        </div>
+      </div>
+    `;
+  }
+
+  _reviewStep(pump) {
+    return `
+      <section>
+        <h2>Review calibration</h2>
+        <p class="instructions">
+          The saved values are ready. Restore normal speed before leaving the wizard.
+        </p>
+
+        <div class="review-grid">
+          <div class="metric">
+            <div class="metric-label">Current pump speed</div>
+            <div class="metric-value">${pump.current_speed ?? "-"}%</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Saved normal speed</div>
+            <div class="metric-value">${pump.normal_setpoint}%</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Saved feeding speed</div>
+            <div class="metric-value">${pump.feeding_setpoint}%</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="primary" data-action="restore">Restore normal speed</button>
+          <button data-action="step" data-step="1">Adjust normal speed</button>
+          <button data-action="step" data-step="2">Adjust feeding speed</button>
+        </div>
+      </section>
     `;
   }
 
@@ -616,7 +842,8 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     }
 
     return `
-      <section class="summary">
+      <aside class="summary">
+        <h3>Current setup</h3>
         <div class="summary-grid">
           <div class="metric">
             <div class="metric-label">Current pump speed</div>
@@ -631,7 +858,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
             <div class="metric-value">${pump.feeding_setpoint}%</div>
           </div>
         </div>
-      </section>
+      </aside>
     `;
   }
 
