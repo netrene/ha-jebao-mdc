@@ -22,4 +22,3 @@ MANUFACTURER = "JEBAO"
 MODEL = "MDC"
 
 PANEL_URL = "jebao-mdc-calibration"
-PANEL_MODULE_URL = "/jebao_mdc/panel.js"

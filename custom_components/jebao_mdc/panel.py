@@ -13,14 +13,15 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .const import DOMAIN, PANEL_MODULE_URL, PANEL_URL
+from .const import DOMAIN, PANEL_URL
 from .coordinator import JebaoMdcCoordinator
 
 PANEL_COMPONENT_NAME = "jebao-mdc-calibration-panel"
 PANEL_ICON = "mdi:pump"
 PANEL_TITLE = "JEBAO Setup"
-PANEL_VERSION = "0.4.8"
+PANEL_VERSION = "0.4.9"
 PANEL_FILE = "frontend/panel.js"
+PANEL_MODULE_URL = f"/jebao_mdc/panel-{PANEL_VERSION}.js"
 
 WS_LIST = f"{DOMAIN}/calibration/list"
 WS_SET_SPEED = f"{DOMAIN}/calibration/set_speed"
@@ -31,6 +32,7 @@ TARGET_NORMAL = "normal"
 TARGET_FEEDING = "feeding"
 
 PANEL_REGISTERED = "__panel_registered"
+PANEL_REGISTERED_VERSION = "__panel_registered_version"
 STATIC_REGISTERED = "__static_registered"
 WEBSOCKET_REGISTERED = "__websocket_registered"
 
@@ -39,12 +41,12 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     """Register the calibration panel and its websocket commands."""
     data = hass.data.setdefault(DOMAIN, {})
 
-    if not data.get(STATIC_REGISTERED):
+    if data.get(STATIC_REGISTERED) != PANEL_VERSION:
         static_path = Path(__file__).parent / PANEL_FILE
         await hass.http.async_register_static_paths(
             [StaticPathConfig(PANEL_MODULE_URL, str(static_path), False)]
         )
-        data[STATIC_REGISTERED] = True
+        data[STATIC_REGISTERED] = PANEL_VERSION
 
     if not data.get(WEBSOCKET_REGISTERED):
         websocket_api.async_register_command(hass, websocket_list_pumps)
@@ -53,6 +55,13 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
         websocket_api.async_register_command(hass, websocket_restore_normal)
         data[WEBSOCKET_REGISTERED] = True
 
+    frontend_panels = hass.data.get("frontend_panels", {})
+    if (
+        PANEL_URL in frontend_panels
+        and data.get(PANEL_REGISTERED_VERSION) != PANEL_VERSION
+    ):
+        frontend.async_remove_panel(hass, PANEL_URL)
+
     if PANEL_URL not in hass.data.get("frontend_panels", {}):
         await panel_custom.async_register_panel(
             hass,
@@ -60,11 +69,12 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             webcomponent_name=PANEL_COMPONENT_NAME,
             sidebar_title=PANEL_TITLE,
             sidebar_icon=PANEL_ICON,
-            module_url=f"{PANEL_MODULE_URL}?v={PANEL_VERSION}",
-            config={"domain": DOMAIN},
+            module_url=PANEL_MODULE_URL,
+            config={"domain": DOMAIN, "version": PANEL_VERSION},
             require_admin=True,
         )
     data[PANEL_REGISTERED] = True
+    data[PANEL_REGISTERED_VERSION] = PANEL_VERSION
 
 
 @callback
@@ -77,6 +87,7 @@ def async_unload_panel_if_unused(hass: HomeAssistant) -> None:
     if PANEL_URL in hass.data.get("frontend_panels", {}):
         frontend.async_remove_panel(hass, PANEL_URL)
     data.pop(PANEL_REGISTERED, None)
+    data.pop(PANEL_REGISTERED_VERSION, None)
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_LIST})
@@ -92,19 +103,7 @@ async def websocket_list_pumps(
         if not isinstance(coordinator, JebaoMdcCoordinator):
             continue
 
-        status = coordinator.data
-        pumps.append(
-            {
-                "entry_id": entry_id,
-                "title": coordinator._entry.title,  # noqa: SLF001
-                "current_speed": status.speed if status is not None else None,
-                "normal_setpoint": coordinator.normal_setpoint,
-                "feeding_setpoint": coordinator.feeding_setpoint,
-                "feeding_duration": coordinator.feeding_duration,
-                "feeding_active": coordinator.feeding_active,
-                "feeding_remaining_seconds": coordinator.feeding_remaining_seconds,
-            }
-        )
+        pumps.append(_pump_payload(entry_id, coordinator))
 
     connection.send_result(msg["id"], {"pumps": pumps})
 
