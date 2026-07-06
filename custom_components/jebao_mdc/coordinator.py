@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 import time
 from typing import Any
@@ -16,6 +16,7 @@ from .const import (
     CONF_FEEDING_DURATION,
     CONF_FEEDING_SETPOINT,
     CONF_FEEDING_UNTIL,
+    CONF_CALIBRATION_LAST,
     CONF_NORMAL_SETPOINT,
     DEFAULT_FEEDING_DURATION,
     DEFAULT_FEEDING_SETPOINT,
@@ -60,6 +61,9 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
         self.feeding_active = False
         self.feeding_until: float | None = self._optional_float(
             options.get(CONF_FEEDING_UNTIL)
+        )
+        self.calibration_last: str | None = self._optional_string(
+            options.get(CONF_CALIBRATION_LAST)
         )
         self._feeding_task: asyncio.Task[Any] | None = None
 
@@ -185,6 +189,17 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
         self.set_feeding_duration(value)
         self._store_option(CONF_FEEDING_DURATION, value)
 
+    def mark_calibrated(self) -> None:
+        """Persist the current time as the last successful calibration."""
+        self.calibration_last = datetime.now(UTC).isoformat()
+        self._store_option(CONF_CALIBRATION_LAST, self.calibration_last)
+        self.async_update_listeners()
+
+    @property
+    def calibrated(self) -> bool:
+        """Return whether the pump has completed calibration."""
+        return self.calibration_last is not None
+
     @property
     def feeding_remaining_seconds(self) -> int:
         """Return remaining feeding time in seconds."""
@@ -192,7 +207,7 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
             return 0
         return max(0, int(round(self.feeding_until - self._now())))
 
-    def _store_option(self, key: str, value: int | float) -> None:
+    def _store_option(self, key: str, value: int | float | str) -> None:
         """Persist an integration option."""
         options = dict(self._entry.options)
         options[key] = value
@@ -213,6 +228,14 @@ class JebaoMdcCoordinator(DataUpdateCoordinator[PumpStatus]):
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _optional_string(value: Any) -> str | None:
+        """Convert an optional config value to string."""
+        if value is None:
+            return None
+        value = str(value)
+        return value or None
 
     @staticmethod
     def _now() -> float:

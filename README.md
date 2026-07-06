@@ -40,6 +40,7 @@ The integration creates:
 - `button`: stop feeding
 - `binary_sensor`: feeding active
 - `sensor`: feeding remaining time
+- `sensor`: calibration status with `last_calibrated` timestamp
 
 Pressing `Start feeding` sets the pump to the feeding setpoint for the configured
 duration. Afterwards the pump is restored to the normal setpoint. Pressing

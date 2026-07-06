@@ -21,7 +21,6 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     this._busy = false;
     this._narrow = false;
     this._showFeedingWarning = false;
-    this._calibratedEntries = this._loadCalibrationState();
   }
 
   set hass(hass) {
@@ -268,10 +267,10 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       const result = await this._hass.connection.sendMessagePromise({
         type: "jebao_mdc/calibration/restore_normal",
         entry_id: pump.entry_id,
+        mark_calibrated: true,
       });
       this._mergePump(result);
       this._syncFromPump();
-      this._markCalibrated(pump.entry_id);
       this._done = true;
       this._flash = "";
     } catch (error) {
@@ -437,33 +436,18 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
   }
 
   _isCalibrated(entryId) {
-    return this._calibratedEntries.has(entryId);
+    return Boolean(this._pumps.find((pump) => pump.entry_id === entryId)?.calibrated);
   }
 
-  _markCalibrated(entryId) {
-    this._calibratedEntries.add(entryId);
-    this._saveCalibrationState();
-  }
-
-  _loadCalibrationState() {
-    try {
-      const raw = window.localStorage.getItem("jebao_mdc_calibrated_entries");
-      const values = raw ? JSON.parse(raw) : [];
-      return new Set(Array.isArray(values) ? values : []);
-    } catch (_error) {
-      return new Set();
+  _formatCalibrationLast(value) {
+    if (!value) {
+      return "Noch nicht kalibriert";
     }
-  }
-
-  _saveCalibrationState() {
-    try {
-      window.localStorage.setItem(
-        "jebao_mdc_calibrated_entries",
-        JSON.stringify([...this._calibratedEntries])
-      );
-    } catch (_error) {
-      // Calibration setpoints are saved in Home Assistant; this only affects UI status.
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
     }
+    return `Zuletzt kalibriert: ${date.toLocaleString()}`;
   }
 
   _render() {
@@ -654,6 +638,17 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           white-space: nowrap;
           color: #e6e6e6;
           font-size: 13px;
+        }
+
+        .pump-status-text {
+          min-width: 0;
+        }
+
+        .pump-status-meta {
+          margin-top: 2px;
+          color: var(--jebao-muted);
+          font-size: 11px;
+          line-height: 1.25;
         }
 
         .status-chip {
@@ -1334,7 +1329,12 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
             const calibrated = this._isCalibrated(item.entry_id);
             return `
               <div class="pump-status-row">
-                <div class="pump-status-name">${this._escape(this._pumpLabel(item))}</div>
+                <div class="pump-status-text">
+                  <div class="pump-status-name">${this._escape(this._pumpLabel(item))}</div>
+                  <div class="pump-status-meta">
+                    ${this._escape(this._formatCalibrationLast(item.calibration_last))}
+                  </div>
+                </div>
                 <div class="status-chip ${calibrated ? "calibrated" : "uncalibrated"}">
                   ${calibrated ? "Kalibriert" : "Unkalibriert"}
                 </div>

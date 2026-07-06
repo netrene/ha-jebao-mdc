@@ -19,7 +19,7 @@ from .coordinator import JebaoMdcCoordinator
 PANEL_COMPONENT_NAME = "jebao-mdc-calibration-panel"
 PANEL_ICON = "mdi:pump"
 PANEL_TITLE = "JEBAO Setup"
-PANEL_VERSION = "0.4.7"
+PANEL_VERSION = "0.4.8"
 PANEL_FILE = "frontend/panel.js"
 
 WS_LIST = f"{DOMAIN}/calibration/list"
@@ -178,6 +178,7 @@ async def websocket_save_setpoint(
     {
         vol.Required("type"): WS_RESTORE_NORMAL,
         vol.Required("entry_id"): cv.string,
+        vol.Optional("mark_calibrated", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -197,6 +198,8 @@ async def websocket_restore_normal(
     except UpdateFailed as err:
         connection.send_error(msg["id"], "restore_failed", str(err))
         return
+    if msg["mark_calibrated"]:
+        coordinator.mark_calibrated()
 
     connection.send_result(msg["id"], _pump_payload(msg["entry_id"], coordinator))
 
@@ -224,4 +227,6 @@ def _pump_payload(entry_id: str, coordinator: JebaoMdcCoordinator) -> dict[str, 
         "feeding_duration": coordinator.feeding_duration,
         "feeding_active": coordinator.feeding_active,
         "feeding_remaining_seconds": coordinator.feeding_remaining_seconds,
+        "calibrated": coordinator.calibrated,
+        "calibration_last": coordinator.calibration_last,
     }

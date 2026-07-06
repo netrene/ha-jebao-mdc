@@ -9,6 +9,7 @@ CONF_NORMAL_SETPOINT = "normal_setpoint"
 CONF_FEEDING_SETPOINT = "feeding_setpoint"
 CONF_FEEDING_DURATION = "feeding_duration"
 CONF_FEEDING_UNTIL = "feeding_until"
+CONF_CALIBRATION_LAST = "calibration_last"
 
 DEFAULT_DISCOVERY_PORT = 12414
 DEFAULT_PORT = 12416

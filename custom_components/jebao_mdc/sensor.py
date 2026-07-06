@@ -8,6 +8,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -22,7 +23,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up JEBAO MDC sensor entities."""
     coordinator: JebaoMdcCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([JebaoMdcFeedingRemainingSensor(coordinator, entry)])
+    async_add_entities(
+        [
+            JebaoMdcFeedingRemainingSensor(coordinator, entry),
+            JebaoMdcCalibrationStatusSensor(coordinator, entry),
+        ]
+    )
 
 
 class JebaoMdcFeedingRemainingSensor(JebaoMdcEntity, SensorEntity):
@@ -49,4 +55,29 @@ class JebaoMdcFeedingRemainingSensor(JebaoMdcEntity, SensorEntity):
         return {
             "remaining_minutes": minutes,
             "remaining_human": f"{minutes:02d}:{seconds:02d}",
+        }
+
+
+class JebaoMdcCalibrationStatusSensor(JebaoMdcEntity, SensorEntity):
+    """Representation of the pump calibration status."""
+
+    _attr_name = "Calibration status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: JebaoMdcCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, entry, "calibration_status")
+
+    @property
+    def native_value(self) -> str:
+        """Return the calibration status."""
+        return "calibrated" if self.coordinator.calibrated else "uncalibrated"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return calibration details."""
+        return {
+            "last_calibrated": self.coordinator.calibration_last,
+            "normal_setpoint": self.coordinator.normal_setpoint,
+            "feeding_setpoint": self.coordinator.feeding_setpoint,
         }
