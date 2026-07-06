@@ -19,7 +19,7 @@ from .coordinator import JebaoMdcCoordinator
 PANEL_COMPONENT_NAME = "jebao-mdc-calibration-panel"
 PANEL_ICON = "mdi:pump"
 PANEL_TITLE = "JEBAO Setup"
-PANEL_VERSION = "0.4.3"
+PANEL_VERSION = "0.4.4"
 PANEL_FILE = "frontend/panel.js"
 
 WS_LIST = f"{DOMAIN}/calibration/list"

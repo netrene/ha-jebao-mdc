@@ -60,9 +60,12 @@ The panel guides you through calibration of the two important setpoints:
 - **Normal speed**: the everyday pump speed.
 - **Feeding speed**: the reduced speed used while feeding.
 
-The wizard lets you select a pump, test a candidate speed, adjust it in small
-steps, save it as the normal or feeding setpoint, and restore the configured
-normal speed when calibration is finished.
+The wizard uses a four-step flow:
+
+1. Select the pump to calibrate.
+2. Set and save the normal speed. The pump changes live while you move the slider.
+3. Set and save the feeding speed. The normal speed is shown as a reference marker.
+4. Review both values and finish. The panel restores the configured normal speed.
 
 The panel uses the integration backend to set the pump speed and persist the
 selected setpoints in the config entry options. No YAML or dashboard setup is
