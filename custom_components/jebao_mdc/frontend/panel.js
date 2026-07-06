@@ -20,6 +20,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     this._liveSeq = 0;
     this._busy = false;
     this._narrow = false;
+    this._showFeedingWarning = false;
   }
 
   set hass(hass) {
@@ -127,6 +128,15 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       await this._next();
       return;
     }
+    if (action === "confirm-feeding-warning") {
+      await this._continueToFeedingStep();
+      return;
+    }
+    if (action === "cancel-feeding-warning") {
+      this._showFeedingWarning = false;
+      this._render();
+      return;
+    }
     if (action === "back") {
       await this._back();
       return;
@@ -192,14 +202,8 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     }
 
     if (this._step === 2) {
-      if (!(await this._saveSetpoint("normal", this._normal))) {
-        return;
-      }
-      this._normalSaved = this._normal;
-      this._step = 3;
-      this._flashMessage("Normaldrehzahl gespeichert");
+      this._showFeedingWarning = true;
       this._render();
-      await this._sendLiveSpeed(this._feeding);
       return;
     }
 
@@ -215,6 +219,18 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     }
 
     await this._finish();
+  }
+
+  async _continueToFeedingStep() {
+    this._showFeedingWarning = false;
+    if (!(await this._saveSetpoint("normal", this._normal))) {
+      return;
+    }
+    this._normalSaved = this._normal;
+    this._step = 3;
+    this._flashMessage("Normaldrehzahl gespeichert");
+    this._render();
+    await this._sendLiveSpeed(this._feeding);
   }
 
   async _back() {
@@ -855,6 +871,73 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           color: var(--jebao-muted);
         }
 
+        .dialog-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 5;
+          display: grid;
+          place-items: center;
+          padding: 18px;
+          background: rgba(0, 0, 0, 0.62);
+        }
+
+        .warning-dialog {
+          width: 460px;
+          max-width: 100%;
+          background: #1d1515;
+          border: 1px solid rgba(255, 82, 82, 0.55);
+          border-radius: 16px;
+          box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+          color: #f5eeee;
+          padding: 22px;
+        }
+
+        .warning-head {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .alarm {
+          width: 44px;
+          height: 44px;
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+          border-radius: 50%;
+          background: rgba(255, 82, 82, 0.16);
+          border: 2px solid #ff5252;
+          color: #ff6b6b;
+          font-size: 28px;
+          font-weight: 900;
+        }
+
+        .warning-title {
+          font-size: 20px;
+          font-weight: 750;
+        }
+
+        .warning-text {
+          margin-top: 14px;
+          color: #f2caca;
+          font-size: 14px;
+          line-height: 1.55;
+        }
+
+        .warning-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 20px;
+        }
+
+        button.danger {
+          background: #ff5252;
+          border-color: #ff5252;
+          color: #1b0909;
+          font-weight: 750;
+        }
+
         @keyframes flowmove {
           from {
             background-position: 0 0;
@@ -911,6 +994,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           ${this._footer()}
         </main>
       </div>
+      ${this._showFeedingWarning ? this._feedingWarningDialog() : ""}
     `;
     this._updateMenuButton();
   }
@@ -1070,6 +1154,35 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           ${this._primaryLabel()}
         </button>
       </footer>
+    `;
+  }
+
+  _feedingWarningDialog() {
+    return `
+      <div class="dialog-backdrop" role="presentation">
+        <section
+          class="warning-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="feeding-warning-title"
+        >
+          <div class="warning-head">
+            <div class="alarm" aria-hidden="true">!</div>
+            <div id="feeding-warning-title" class="warning-title">Drehzahl wird reduziert</div>
+          </div>
+          <p class="warning-text">
+            Im nächsten Schritt wird die Pumpe auf den Feeding-Testwert reduziert.
+            Bitte befinde dich in der Nähe des Aquariums und kontrolliere Wasserstand
+            sowie Wasseraustritt, bevor du fortfährst.
+          </p>
+          <div class="warning-actions">
+            <button data-action="cancel-feeding-warning">Abbrechen</button>
+            <button class="danger" data-action="confirm-feeding-warning">
+              Verstanden, weiter
+            </button>
+          </div>
+        </section>
+      </div>
     `;
   }
 
