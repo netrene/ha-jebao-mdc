@@ -21,6 +21,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     this._busy = false;
     this._narrow = false;
     this._showFeedingWarning = false;
+    this._calibratedEntries = this._loadCalibrationState();
   }
 
   set hass(hass) {
@@ -245,6 +246,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
   async _restart() {
     this._done = false;
     this._step = 1;
+    this._syncFromPump();
     this._normal = this._normalSaved;
     this._feeding = this._feedingSaved;
     this._flash = "";
@@ -269,6 +271,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       });
       this._mergePump(result);
       this._syncFromPump();
+      this._markCalibrated(pump.entry_id);
       this._done = true;
       this._flash = "";
     } catch (error) {
@@ -415,7 +418,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
 
   _primaryLabel() {
     if (this._done) {
-      return "Neu starten";
+      return "Zur Pumpenauswahl";
     }
     if (this._step === 1) {
       return "Weiter";
@@ -431,6 +434,36 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       return "Keine Pumpe gefunden";
     }
     return pump.title.replace("JEBAO MDC ", "JEBAO MDC · ");
+  }
+
+  _isCalibrated(entryId) {
+    return this._calibratedEntries.has(entryId);
+  }
+
+  _markCalibrated(entryId) {
+    this._calibratedEntries.add(entryId);
+    this._saveCalibrationState();
+  }
+
+  _loadCalibrationState() {
+    try {
+      const raw = window.localStorage.getItem("jebao_mdc_calibrated_entries");
+      const values = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(values) ? values : []);
+    } catch (_error) {
+      return new Set();
+    }
+  }
+
+  _saveCalibrationState() {
+    try {
+      window.localStorage.setItem(
+        "jebao_mdc_calibrated_entries",
+        JSON.stringify([...this._calibratedEntries])
+      );
+    } catch (_error) {
+      // Calibration setpoints are saved in Home Assistant; this only affects UI status.
+    }
   }
 
   _render() {
@@ -594,6 +627,54 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         .field {
           display: grid;
           gap: 8px;
+        }
+
+        .pump-status-list {
+          display: grid;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .pump-status-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          min-height: 46px;
+          background: var(--jebao-panel);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 10px;
+          padding: 10px 12px;
+        }
+
+        .pump-status-name {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: #e6e6e6;
+          font-size: 13px;
+        }
+
+        .status-chip {
+          flex: 0 0 auto;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 750;
+          letter-spacing: 0.2px;
+          padding: 5px 9px;
+        }
+
+        .status-chip.calibrated {
+          background: rgba(76, 175, 80, 0.16);
+          border: 1px solid rgba(76, 175, 80, 0.42);
+          color: #a8e6aa;
+        }
+
+        .status-chip.uncalibrated {
+          background: rgba(255, 193, 7, 0.12);
+          border: 1px solid rgba(255, 193, 7, 0.34);
+          color: #ffd978;
         }
 
         label,
@@ -948,23 +1029,221 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         }
 
         @media (max-width: 640px) {
+          :host {
+            height: 100vh;
+            height: 100dvh;
+            min-height: 0;
+            overflow: hidden;
+          }
+
           .page {
-            padding: 12px;
+            height: 100vh;
+            height: 100dvh;
+            min-height: 0;
+            padding: 8px;
+            padding-top: 54px;
+            place-items: stretch;
+          }
+
+          .wizard {
+            width: 100%;
+            height: calc(100vh - 62px);
+            height: calc(100dvh - 62px);
+            max-height: calc(100vh - 62px);
+            max-height: calc(100dvh - 62px);
+            display: flex;
+            flex-direction: column;
+            border-radius: 14px;
+            overflow: hidden;
           }
 
           .header,
           .content,
           .footer {
-            padding-left: 18px;
-            padding-right: 18px;
+            padding-left: 14px;
+            padding-right: 14px;
+          }
+
+          .header {
+            flex: 0 0 auto;
+            padding-top: 16px;
+            padding-bottom: 8px;
+          }
+
+          .kicker {
+            font-size: 10px;
+            letter-spacing: 1.1px;
+          }
+
+          h1 {
+            font-size: 21px;
+            line-height: 1.15;
+          }
+
+          .stepper {
+            gap: 5px;
+            margin-top: 12px;
+          }
+
+          .dot {
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+          }
+
+          .content {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-top: 14px;
+            padding-bottom: 14px;
+          }
+
+          .helper {
+            font-size: 13px;
+            line-height: 1.42;
+            margin-bottom: 12px;
+          }
+
+          select,
+          input[type="number"] {
+            min-height: 40px;
+            border-radius: 8px;
+          }
+
+          .info {
+            margin-top: 12px;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.38;
+          }
+
+          .flowbox {
+            height: 88px;
+            border-radius: 11px;
+            margin-bottom: 14px;
+          }
+
+          .speed {
+            font-size: 42px;
+          }
+
+          .speed span {
+            font-size: 18px;
+          }
+
+          .speed-label {
+            font-size: 10px;
+            margin-top: 4px;
+          }
+
+          .slider-wrap {
+            padding-top: 10px;
+          }
+
+          input[type="range"] {
+            margin: 0;
+          }
+
+          .normal-marker {
+            top: -7px;
+            font-size: 9px;
+          }
+
+          .normal-marker::after {
+            height: 27px;
+          }
+
+          .number-row {
+            margin-top: 12px;
+          }
+
+          .number-row input {
+            width: 76px;
+            font-size: 15px;
+          }
+
+          .value-card {
+            padding: 12px;
+          }
+
+          .value {
+            font-size: 28px;
+          }
+
+          .pump-line {
+            margin-top: 10px;
           }
 
           .review-grid {
             grid-template-columns: 1fr;
+            gap: 10px;
           }
 
-          h1 {
-            font-size: 23px;
+          .done {
+            align-content: center;
+            min-height: 100%;
+            padding: 16px 0;
+          }
+
+          .check {
+            width: 54px;
+            height: 54px;
+            font-size: 26px;
+          }
+
+          .done-title {
+            font-size: 18px;
+          }
+
+          .footer {
+            flex: 0 0 auto;
+            min-height: 60px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            gap: 8px;
+            background: var(--jebao-card);
+          }
+
+          button {
+            min-height: 40px;
+            border-radius: 9px;
+            padding: 0 13px;
+            font-size: 13px;
+          }
+
+          button.primary {
+            min-height: 42px;
+            padding: 0 15px;
+            font-size: 14px;
+          }
+
+          .flash {
+            max-width: 120px;
+            font-size: 12px;
+            line-height: 1.2;
+          }
+
+          .dialog-backdrop {
+            padding: 12px;
+          }
+
+          .warning-dialog {
+            padding: 18px;
+          }
+
+          .warning-title {
+            font-size: 18px;
+          }
+
+          .warning-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+          }
+
+          .warning-actions button {
+            width: 100%;
           }
         }
       </style>
@@ -1036,7 +1315,9 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
                 <option value="${this._escape(item.entry_id)}" ${
                 item.entry_id === this._entryId ? "selected" : ""
               }>
-                  ${this._escape(this._pumpLabel(item))}
+                  ${this._escape(this._pumpLabel(item))} · ${
+                this._isCalibrated(item.entry_id) ? "Kalibriert" : "Unkalibriert"
+              }
                 </option>
               `
             )
@@ -1046,6 +1327,21 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       <div class="info">
         In den nächsten Schritten läuft die Pumpe <strong>live</strong> mit dem eingestellten Wert,
         so siehst du die Strömung sofort.
+      </div>
+      <div class="pump-status-list" aria-label="Kalibrierstatus">
+        ${this._pumps
+          .map((item) => {
+            const calibrated = this._isCalibrated(item.entry_id);
+            return `
+              <div class="pump-status-row">
+                <div class="pump-status-name">${this._escape(this._pumpLabel(item))}</div>
+                <div class="status-chip ${calibrated ? "calibrated" : "uncalibrated"}">
+                  ${calibrated ? "Kalibriert" : "Unkalibriert"}
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
       </div>
       ${pump ? `<div class="pump-line">Aktuell: <strong>${pump.current_speed ?? "-"}%</strong></div>` : ""}
     `;
@@ -1123,7 +1419,8 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         <div class="done-title">Kalibrierung abgeschlossen</div>
         <p class="done-text">
           Normaldrehzahl (${this._normalSaved}%) wurde automatisch wiederhergestellt.
-          Feeding ist gespeichert.
+          Feeding ist gespeichert. Du kannst jetzt zur Pumpenauswahl zurückkehren
+          und die nächste Pumpe kalibrieren.
         </p>
       </section>
     `;
