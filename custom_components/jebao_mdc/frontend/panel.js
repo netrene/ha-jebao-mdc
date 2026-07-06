@@ -19,6 +19,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     this._liveTimer = undefined;
     this._liveSeq = 0;
     this._busy = false;
+    this._narrow = false;
   }
 
   set hass(hass) {
@@ -28,6 +29,19 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
       return;
     }
     this._render();
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  set narrow(value) {
+    this._narrow = Boolean(value);
+    this._updateMenuButton();
+  }
+
+  get narrow() {
+    return this._narrow;
   }
 
   connectedCallback() {
@@ -123,6 +137,12 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
     }
     if (action === "adjust-step") {
       await this._goToStep(Number(dataset.step), { applySpeed: true });
+      return;
+    }
+    if (action === "menu") {
+      this.dispatchEvent(
+        new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })
+      );
     }
   }
 
@@ -433,6 +453,51 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
           display: grid;
           place-items: start center;
           padding: 34px 18px;
+        }
+
+        .menu-button {
+          position: fixed;
+          top: 8px;
+          left: 8px;
+          z-index: 2;
+          width: 44px;
+          height: 44px;
+          display: none;
+          place-items: center;
+          border: 0;
+          border-radius: 50%;
+          background: transparent;
+          color: var(--primary-text-color, #eaeaea);
+          padding: 0;
+        }
+
+        .menu-icon,
+        .menu-icon::before,
+        .menu-icon::after {
+          display: block;
+          width: 20px;
+          height: 2px;
+          border-radius: 99px;
+          background: currentColor;
+        }
+
+        .menu-icon {
+          position: relative;
+        }
+
+        .menu-icon::before,
+        .menu-icon::after {
+          content: "";
+          position: absolute;
+          left: 0;
+        }
+
+        .menu-icon::before {
+          top: -6px;
+        }
+
+        .menu-icon::after {
+          top: 6px;
         }
 
         .wizard {
@@ -821,6 +886,9 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         }
       </style>
 
+      <button class="menu-button" data-action="menu" aria-label="Menü öffnen">
+        <span class="menu-icon" aria-hidden="true"></span>
+      </button>
       <div class="page">
         <main class="wizard" aria-live="polite">
           ${
@@ -844,6 +912,7 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         </main>
       </div>
     `;
+    this._updateMenuButton();
   }
 
   _stepper() {
@@ -1002,6 +1071,13 @@ class JebaoMdcCalibrationPanel extends HTMLElement {
         </button>
       </footer>
     `;
+  }
+
+  _updateMenuButton() {
+    const menuButton = this.shadowRoot.querySelector(".menu-button");
+    if (menuButton) {
+      menuButton.style.display = this._narrow ? "grid" : "none";
+    }
   }
 
   _escape(value) {
